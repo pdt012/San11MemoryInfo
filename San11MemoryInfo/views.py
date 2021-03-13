@@ -19,7 +19,7 @@ def index(request):
     else:
         ip = request.META.get("REMOTE_ADDR")
     print("ip:", ip)
-    return render(request, "index.html")
+    return render(request, "search.html")
 
 
 def login(request):

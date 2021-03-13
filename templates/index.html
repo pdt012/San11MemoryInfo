@@ -3,24 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <title>S11内存信息共享</title>
+<!--    <script src="http://apps.bdimg.com/libs/jquery/1.11.1/jquery.min.js"></script>-->
 </head>
 <body>
-<!--    <button type="submit" class="option" formaction="/" formmethod="get"></button>-->
 
-    <h2>地址信息查询</h2>
-    <form action="/search/"  method="get">
-        <span style="font-size:15pt;">内存地址:</span>
-        <input type="text" style="font-size:15pt;" name="address" pattern="[0-9a-fA-F]{6,10}" title="请输入16进制内存地址" value={{ address }}>
-        <input type="submit" value="查询" style="font-size:15pt;">
-    </form>
-    {% if found %}
-    <p>
-        <span style="color:blue;font-size:15pt;">{{ result|linebreaksbr }}</span>
-    </p>
-    {% else %}
-    <p>
-        <span style="color:red;font-size:15pt;">{{ result|linebreaksbr }}</span>
-    </p>
-    {% endif %}
+    {% block mainbody %}
+    {% endblock %}
+
 </body>
 </html>
