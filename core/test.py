@@ -1,3 +1,0 @@
-
-print(int('0x1faf84', 16))
-print(hex(0x7200458 + 0xc0bc + 250 * 0x190 + 4))
