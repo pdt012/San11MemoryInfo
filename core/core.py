@@ -8,6 +8,8 @@ from xlrd.sheet import Sheet
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR_DATA = os.path.join(BASE_DIR, 'data')
+PATH_STRUCTS = os.path.join(DIR_DATA, "pk1.1.1", "structs.xls")
+DIR_FUNCTIONS = os.path.join(DIR_DATA, "pk1.1.1", "functions")
 
 
 class SearchingPath:
@@ -80,12 +82,19 @@ class MemoryUnit(BaseMemoryUnit):
     def search_by_address(self, path: SearchingPath):
         shift = path.last_node().relative_shift  # 相对起始位置的偏移地址
         return
-
-
+    
+    
 class Function(MemoryUnit):
-    def __init__(self, size, name, desc):
-        super().__init__(MemUnitType.Function, size, name, desc)
+    def __init__(self, name, filepath, start_addr, size = 0x10):
+        super().__init__(MemUnitType.Function, size, name, "")
         
+    def load_desc(self):
+        try:
+            with open(os.path.join(DIR_FUNCTIONS, self.filepath)) as fp:
+                firstline = fp.readline()  # 跳过第一行的函数信息
+                self.desc = fp.read().strip()
+        except OSError:
+            pass
 
 class Array(BaseMemoryUnit):
     """数组"""
@@ -151,7 +160,7 @@ class Memory(Struct):
         self.book = None
         
     def init(self):
-        self.book = xlrd.open_workbook(os.path.join(DIR_DATA, "pk1.1.1", "structs.xls"))
+        self.book = xlrd.open_workbook(PATH_STRUCTS)
         try:
             sheet: Sheet = self.book.sheet_by_name("structs")  # 结构体定义页
         except xlrd.biffh.XLRDError:
@@ -162,10 +171,33 @@ class Memory(Struct):
             struct = Struct(struct_name, name, desc, size)
             self.structs[struct_name] = struct
         for struct in self.structs.values():
-            self.find_struct_properties(struct)
-        self.find_struct_properties(self)
-        
-    def find_struct_properties(self, struct: Struct):
+            self.load_struct_properties(struct)  # 加载结构体的属性定义
+        self.load_struct_properties(self)  # 加载主内存结构
+        # 加载函数资料
+        for dirname, dirs, files in os.walk(DIR_FUNCTIONS, topdown=False):  # 递归遍历全部文件
+            for filename in files:
+                path = os.path.join(dirname, filename)
+                try:
+                    with open(os.path.join(DIR_FUNCTIONS, self.filepath)) as fp:
+                        firstline = fp.readline().rstrip()  # 读第一行的函数信息
+                        ls = firstline.split()
+                        if len(ls) == 2:
+                            name, addr = *ls
+                            size = "0x10"
+                        elif len(ls) == 3:
+                            name, addr, size = *ls
+                        else:
+                            raise ValueError()
+                        addr = int(addr, 16)
+                        size = int(size, 16)
+                        func = Function(name, path, addr, size)
+                        self.properties[addr] = func
+                except OSError:
+                    error(f"函数资料文件读取失败 <{path}>")
+                except (ValueError, TypeError):  # 格式有误
+                    error(f"函数资料解析错误 <{path}> \"{firstline}\"")
+                
+    def load_struct_properties(self, struct: Struct):
         try:
             sheet: Sheet = self.book.sheet_by_name(struct.struct_name)  # 找到结构体结构
         except xlrd.biffh.XLRDError:
@@ -194,7 +226,11 @@ class Memory(Struct):
                     struct.properties[address] = Array(unit, array_len, name, desc)
                 else:
                     struct.properties[address] = unit
-    
+
+
+def error(text):
+    print("Error:", text)
+
 
 if __name__ == '__main__':
     memory = Memory()
