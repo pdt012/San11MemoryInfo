@@ -31,15 +31,28 @@ class SearchingPath:
 
     def __str__(self) -> str:
         res = ""
-        res += f"target address: {hex(self.target_addr)}\n"
-        for node in self.nodes:
+        res += f"TARGET ADDRESS: {hex(self.target_addr)}"
+        indent = ""
+        for i in range(1, len(self.nodes)):
+            node = self.nodes[i]
+            indent += " "
             unit = node.unit
-            res += f" -> [{hex(node.absolute_addr)}] {unit.get_type_str()} {unit.name}\n"
+            res += "\n" + indent + f"-> [{node.absolute_addr:x}] {str(unit)}"
+            if isinstance(unit, Array):
+                base_addr = node.absolute_addr  # 数组起始地址
+                shift = self.target_addr - base_addr  # 目标地址相对数组起始位置的偏移
+                index = shift // unit.element.get_size()
+                res += f" index[{index}]"
+        last_node = self.last_node()
+        last_unit = last_node.unit
+        if (isinstance(last_unit, Function) and not last_unit.desc):
+            last_unit.load_desc()
+        shift = self.target_addr-last_node.absolute_addr
+        res += f"\nRESULT: [{last_node.absolute_addr:x}]+{hex(shift)} {last_unit.get_detail()}"
         return res
         
     def __repr__(self) -> str:
         return str(self)
-
 
 
 class MemUnitType(Enum):
@@ -66,6 +79,15 @@ class BaseMemoryUnit:
     def search_by_address(self, path: SearchingPath):
         ...
 
+    def get_detail(self) -> str:
+        return self.__str__() + f" (size={hex(self.get_size())})"
+
+    def __str__(self) -> str:
+        return f"<{self.get_type_str()}> {self.name}"
+
+    def __repr__(self) -> str:
+        return str(self)
+
 
 class MemoryUnit(BaseMemoryUnit):
     def __init__(self, type_: MemUnitType, size: int, name: str, desc: str):
@@ -82,19 +104,28 @@ class MemoryUnit(BaseMemoryUnit):
     def search_by_address(self, path: SearchingPath):
         shift = path.last_node().relative_shift  # 相对起始位置的偏移地址
         return
+
+    def get_detail(self) -> str:
+        res = super().get_detail()
+        if self.desc:
+            res += "\n" + self.desc
+        return res
     
     
 class Function(MemoryUnit):
-    def __init__(self, name, filepath, start_addr, size = 0x10):
+    def __init__(self, name, filepath, size = 0x10):
         super().__init__(MemUnitType.Function, size, name, "")
+        self.filepath = filepath
+        # self.start_addr = start_addr
         
     def load_desc(self):
         try:
-            with open(os.path.join(DIR_FUNCTIONS, self.filepath)) as fp:
+            with open(os.path.join(DIR_FUNCTIONS, self.filepath), encoding="utf-8") as fp:
                 firstline = fp.readline()  # 跳过第一行的函数信息
                 self.desc = fp.read().strip()
         except OSError:
-            pass
+            error(f"函数资料文件读取失败 <{path}>")
+
 
 class Array(BaseMemoryUnit):
     """数组"""
@@ -121,6 +152,12 @@ class Array(BaseMemoryUnit):
         # 进入该元素继续查找
         return self.element.search_by_address(path)
 
+    def get_detail(self) -> str:
+        res = super().get_detail() + f"[len={self.array_len}]"
+        if self.desc:
+            res += "\n" + self.desc
+        return res
+
     
 class Struct(BaseMemoryUnit):
     """结构体"""
@@ -139,7 +176,9 @@ class Struct(BaseMemoryUnit):
 
     def search_by_address(self, path: SearchingPath):
         base_addr = path.last_node().absolute_addr
-        for relative_shift, unit in reversed(self.properties.items()):  # 从后往前
+
+        for relative_shift in sorted(self.properties.keys(), reverse=True):  # 从后往前
+            unit = self.properties[relative_shift]
             start_addr = base_addr + relative_shift
             if start_addr <= path.target_addr:
                 end_addr = start_addr + unit.get_size()
@@ -168,7 +207,7 @@ class Memory(Struct):
             return None
         for row in range(1, sheet.nrows):  # 除去第一行标题
             struct_name, name, desc, size = sheet.row_values(row, 0, 4)
-            struct = Struct(struct_name, name, desc, size)
+            struct = Struct(struct_name, name, desc, int(size))
             self.structs[struct_name] = struct
         for struct in self.structs.values():
             self.load_struct_properties(struct)  # 加载结构体的属性定义
@@ -178,19 +217,19 @@ class Memory(Struct):
             for filename in files:
                 path = os.path.join(dirname, filename)
                 try:
-                    with open(os.path.join(DIR_FUNCTIONS, self.filepath)) as fp:
+                    with open(os.path.join(dirname, filename), encoding="utf-8") as fp:
                         firstline = fp.readline().rstrip()  # 读第一行的函数信息
                         ls = firstline.split()
                         if len(ls) == 2:
-                            name, addr = *ls
+                            name, addr = ls
                             size = "0x10"
                         elif len(ls) == 3:
-                            name, addr, size = *ls
+                            name, addr, size = ls
                         else:
                             raise ValueError()
                         addr = int(addr, 16)
                         size = int(size, 16)
-                        func = Function(name, path, addr, size)
+                        func = Function(name, path, size)
                         self.properties[addr] = func
                 except OSError:
                     error(f"函数资料文件读取失败 <{path}>")
