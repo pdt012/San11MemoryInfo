@@ -1,0 +1,2 @@
+﻿部队攻击伤害计算 57ADB2 20
+static void __cdecl s11_57adb2(s11::DamageInfo* info, s11::Unit* attacker, int tactics_id, s11::Point target_pos, int type, int critical, BOOL ambush)
